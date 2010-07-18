@@ -1,0 +1,5 @@
+Dancer::Plugin::Filters
+
+Dancer plugin to allow the easy creation of custom input and output filters 
+using Dancer's serializer interface. 
+
