@@ -4,9 +4,9 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME                => 'Dancer::Plugin::Filter',
-    AUTHOR       => 'Edward Allen (ealleniii _at_ cpan _dot_ org)',
+    AUTHOR              => 'Edward Allen (ealleniii _at_ cpan _dot_ org)',
     VERSION_FROM        => 'lib/Dancer/Plugin/Filter.pm',
-    ABSTRACT            => 'YOUR APPLICATION ABSTRACT',
+    ABSTRACT_FROM        => 'lib/Dancer/Plugin/Filter.pm',
     ($ExtUtils::MakeMaker::VERSION >= 6.3002
       ? ('LICENSE'=> 'perl')
       : ()),

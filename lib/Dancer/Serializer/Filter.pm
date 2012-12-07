@@ -3,8 +3,9 @@ package Dancer::Serializer::Filter;
 use strict;
 use warnings;
 use Dancer::SharedData;
+use Data::Dumper;
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 use base 'Dancer::Serializer::Abstract';
 
@@ -22,46 +23,47 @@ This is for use with the plugin Dancer::Plugin::Filter, but can be used on it's 
 
 =cut
 
-my $serializer = {
-    'text/x-yaml' => { module => 'Dancer::Serializer::YAML', extension => 'yaml'},
-    'txt/xml'     => { module => 'Dancer::Serializer::XML', extension => 'xml'},
-    'application/json' => { module => 'Dancer::Serializer::JSON', extension => 'json'},
-    'text/x-json' => { module => 'Dancer::Serializer::JSON', extension => 'JSON'},
-};
+{
 
-my $default_content_type = q{};
-    
-sub _set_content_types {
-    my $self = shift;
-    my $request = shift || Dancer::SharedData->request;
-    if (! $request) {
-        Dancer::debug("No Request Object!?!?");
-        return;
-    }
-    Dancer::SharedData->vars->{content_type_out} = undef; 
-    Dancer::SharedData->vars->{content_type_in} = undef; 
-    Dancer::SharedData->vars->{new_path_info} = undef; 
+    my $serializer = { 'text/x-yaml'      => { module => 'Dancer::Serializer::YAML', extension => 'yaml' },
+                       'txt/xml'          => { module => 'Dancer::Serializer::XML',  extension => 'xml' },
+                       'application/json' => { module => 'Dancer::Serializer::JSON', extension => 'json' },
+                       'text/x-json'      => { module => 'Dancer::Serializer::JSON', extension => 'JSON' },
+                     };
 
-    my @type = qw(content_type_in content_type_out);
-    foreach ( $request->content_type, $request->accept ) {
-        my $type = shift @type;
-        while (my ($s, $t) = each %{$serializer}) {
-            if (/^$s/xms) { Dancer::SharedData->vars->{$type} = $s; }
+    my $default_content_type = q{};
+
+    sub _set_content_types {
+        my $self = shift;
+        my $request = shift || Dancer::SharedData->request;
+        if ( !$request ) {
+            Dancer::debug("No Request Object!?!?");
+            return;
         }
-    }
-    my $match = join(q{|}, map { $serializer->{$_}->{extension} } keys %{$serializer});
-    my %extensions = map { $serializer->{$_}->{extension} => $_} keys %{$serializer};
-    if ($request->path =~ m{^(.*?)\.($match)$}xms) {
-        my ($page,$type) = ($1,$2);
-        my $s = $extensions{lc($type)};
-        if ($s) {
-            my $t = $serializer->{$s};
-            Dancer::SharedData->vars->{content_type_out} = $s; 
-            Dancer::SharedData->vars->{new_path_info} = $page
+        Dancer::SharedData->vars->{content_type_out} = undef;
+        Dancer::SharedData->vars->{content_type_in}  = undef;
+        Dancer::SharedData->vars->{new_path_info}    = undef;
+
+        for my $mime_type ( keys %{$serializer} ) {
+            if ( $request->content_type =~ /^$mime_type/xms ) {
+                Dancer::SharedData->vars->{content_type_in} = $mime_type;
+            }
+            if ( $request->accept =~ /^$mime_type/xms ) { Dancer::SharedData->vars->{content_type_out} = $mime_type; }
         }
+
+        my $match = join( q{|}, map { $serializer->{$_}->{extension} } keys %{$serializer} );
+        my %extensions = map { $serializer->{$_}->{extension} => $_ } keys %{$serializer};
+        if ( $request->path =~ m{^(.*?)\.($match)$}xms ) {
+            my ( $page, $type ) = ( $1, $2 );
+            my $mime_type = $extensions{ lc($type) };
+            if ($mime_type) {
+                Dancer::SharedData->vars->{content_type_out} = $mime_type;
+                Dancer::SharedData->vars->{new_path_info}    = $page;
+                Dancer::SharedData->vars->{path_extension}   = lc($type);
+            }
+        }
+        return Dancer::SharedData->vars;
     }
-    return Dancer::SharedData->vars;
-};
 
 =head1 METHODS
 
@@ -84,18 +86,17 @@ Also sets the Dancer shared vars for each of the above.
 
 =cut
 
-
-sub get_content_types {
-    my $self = shift;
-    my $request = shift;
-    if (! exists Dancer::SharedData->vars->{content_type_out}) {
-        $self->_set_content_types($request);
+    sub get_content_types {
+        my $self    = shift;
+        my $request = shift;
+        if ( !exists Dancer::SharedData->vars->{content_type_in} ) {
+            $self->_set_content_types($request);
+        }
+        return { content_type_out => Dancer::SharedData->vars->{content_type_out},
+                 content_type_in  => Dancer::SharedData->vars->{content_type_in},
+                 new_path_info    => Dancer::SharedData->vars->{new_path_info},
+               };
     }
-    return { content_type_out => Dancer::SharedData->vars->{content_type_out},
-             content_type_in => Dancer::SharedData->vars->{content_type_in},
-             new_path_info => Dancer::SharedData->vars->{new_path_info},
-           };
-}
 
 =item B<add_filter>
 
@@ -105,34 +106,33 @@ Adds a filter for $mimetype using module $modulename and extension $extension
 
 =cut
 
-sub add_filter { 
-    my $self = shift;
-    my $mimetype = shift;
-    my $params = shift;
-    $serializer->{$mimetype} = $params;
-    return;
-}
+    sub add_filter {
+        my $self     = shift;
+        my $mimetype = shift;
+        my $params   = shift;
+        $serializer->{$mimetype} = $params;
+        return;
+    }
 
-my $_loaded_modules = {};
+    my $_loaded_modules = {};
 
-sub _get_filter {
-    my $self = shift;
-    my $mimetype = shift;
-    return if (! $serializer->{$mimetype});
-    if (! exists $_loaded_modules->{$mimetype}) {
-        if ( ref $serializer->{$mimetype}->{module} ) {
-            $_loaded_modules->{$mimetype} = $serializer->{$mimetype}->{module};
-        }
-        else {
-            my $module = $serializer->{$mimetype}->{module};
-            if ( Dancer::ModuleLoader->load($module) ) {
-                $_loaded_modules->{$mimetype} = $module->new;
+    sub _get_filter {
+        my $self     = shift;
+        my $mimetype = shift;
+        return if ( not exists $serializer->{$mimetype} );
+        if ( ! exists $_loaded_modules->{$mimetype} ) {
+            if ( ref $serializer->{$mimetype}->{module} ) {
+                $_loaded_modules->{$mimetype} = $serializer->{$mimetype}->{module};
+            }
+            else {
+                my $module = $serializer->{$mimetype}->{module};
+                if ( Dancer::ModuleLoader->load($module) ) {
+                    $_loaded_modules->{$mimetype} = $module->new;
+                }
             }
         }
+        return $_loaded_modules->{$mimetype};
     }
-    return $_loaded_modules->{$mimetype};
-}
-
 
 =item B<serialize>
 
@@ -140,20 +140,22 @@ Serialize a data structure based on accept or extension
 
 =cut
 
-sub serialize {
-    my ($self, $entity) = @_;
-    my $ct = $self->get_content_types();
-    if ($ct->{content_type_out}) {
-        my $s = $self->_get_filter($ct->{content_type_out});
-        if ($s) {
-             return $s->serialize($entity); 
+    sub serialize {
+        my ( $self, $entity ) = @_;
+        my $ct = $self->get_content_types();
+        if ( $ct->{content_type_out} ) {
+            my $s = $self->_get_filter( $ct->{content_type_out} );
+            if ($s) {
+                return $s->serialize($entity);
+            }
+            else {
+                use Data::Dumper;
+                Dancer::debug( "Bad request for type ", $ct->{content_type_out} ."\n" . Dumper($serializer) );
+
+            }
         }
-        else {
-            Dancer::debug("No serializer module for ". $ct->{content_type_out});
-        }
+        return;
     }
-    return;
-}
 
 =item B<deserialize>
 
@@ -161,19 +163,18 @@ Deserialize a data structure based on content_type
 
 =cut
 
-
-sub deserialize {
-    my ($self, $content, $request) = @_;
-    my $ct = $self->get_content_types($request);
-    if ($ct->{content_type_in}) {
-        Dancer::debug("Deserialize type ". $ct->{content_type_in});
-        my $s = $self->_get_filter($ct->{content_type_in});
-        if ($s) {
-             return $s->deserialize($content,$request); 
+    sub deserialize {
+        my ( $self, $content ) = @_;
+        my $ct = $self->get_content_types();
+        if ( $ct->{content_type_in} ) {
+            my $s = $self->_get_filter( $ct->{content_type_in} );
+            if ($s) {
+                my $test = $s->deserialize($content);
+                return $test;
+            }
         }
+        return;
     }
-    return;
-}
 
 =item B<content_type>
 
@@ -181,17 +182,16 @@ returns last used content_type or $Dancer::Serializer::Filter::default_content_t
 
 =cut
 
-
-sub content_type {
-    my $self = shift;
-    my $ct = $self->get_content_types();
-    if (exists $ct->{content_type_out}) {
-        return $ct->{content_type_out};
+    sub content_type {
+        my $self = shift;
+        my $ct   = $self->get_content_types();
+        if ( exists $ct->{content_type_out} ) {
+            return $ct->{content_type_out};
+        }
+        else {
+            return $default_content_type;
+        }
     }
-    else {
-        return $default_content_type;
-    }
-}
 
 =item B<support_content_type>
 
@@ -199,21 +199,17 @@ Indicates if a filter is loaded for the given content_type.
 
 =cut
 
-
-sub support_content_type {
-    my ($self, $ct) = @_;
-    Dancer::debug("Checking for content-type support of: $ct");
-    foreach (keys %{$serializer}) {
-        if ($ct =~ /$_/xms) {
-            Dancer::debug("Found");
-            return 1;
+    sub support_content_type {
+        my ( $self, $ct ) = @_;
+        foreach ( keys %{$serializer} ) {
+            if ( $ct =~ /$_/xms ) {
+                return 1;
+            }
         }
+        return 0;
     }
-    Dancer::debug("Not Found");
-    return 0;
+
 }
-
-
 1;
 __END__
 

@@ -42,6 +42,7 @@ Dancer::Plugin::Filter
                 return $fh;
             }
         }
+        return;
     }
 
     sub content_type { "image/jpeg" }
@@ -52,9 +53,12 @@ Dancer::Plugin::Filter
 
 Dancer plugin to allow the easy creation of custom input and output filters using Dancer's serializer interface. 
 
-This module is essentially a wrapper for Dancer::Serializer::Filter to make implementation more transparent.
+This module is essentially a wrapper for Dancer::Serializer::Filter to make implementation easy.
 
 See Dancer::Serializer::Filter for more information about the process.
+
+This module uses code / inspiration from L<Dancer::Plugin::REST|Dancer::Plugin::REST> and  
+L<Dancer::Serializer::Mutable|Dancer::Serializer::Mutable> by Alexis Sukrieh. 
 
 =cut
 
@@ -71,8 +75,7 @@ Adds path mangaling to remove extensions.
 =cut
 
 register prepare_filters => sub {
-    before sub {
-        set serializer => 'Filter';
+    hook before => sub {
         my $ct = Dancer::Serializer::Filter->get_content_types(request);
         if ((exists $ct->{new_path_info}) && ($ct->{new_path_info})) {
             request->path_info($ct->{new_path_info});
@@ -100,9 +103,14 @@ __END__
 
 =back
 
+=head1 KNOWN ISSUES
+
+There seems to be a problem with Dancer's dynamic module loading in some rare cases.  It may make sense to manually require your filters.
+
 =head1 SEE ALSO
 
-L<Dancer|Dancer>, L<Dancer::Serializer::Filter|Dancer::Serializer::Filter>
+L<Dancer|Dancer>, L<Dancer::Serializer::Filter|Dancer::Serializer::Filter>,
+L<Dancer::Plugin::REST|Dancer::Plugin::REST>,L<Dancer::Serializer::Mutable|Dancer::Serializer::Mutable>
 
 =head1 AUTHOR
 

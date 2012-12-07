@@ -3,3 +3,6 @@ Dancer::Plugin::Filters
 Dancer plugin to allow the easy creation of custom input and output filters 
 using Dancer's serializer interface. 
 
+This module uses code / inspiration from Dancer::Plugin::REST and  
+Dancer::Serializer::Mutable by Alexis Sukrieh. 
+
